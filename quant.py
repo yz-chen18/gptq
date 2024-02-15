@@ -136,14 +136,15 @@ except:
 # Assumes layer is perfectly divisible into 1024 * 1024 blocks
 class Quant3Linear(nn.Module): 
 
-    def __init__(self, infeatures, outfeatures, faster=False):
+    def __init__(self, infeatures, outfeatures, nbits=3, faster=False):
         super().__init__()
         self.register_buffer('zeros', torch.zeros((outfeatures, 1)))
         self.register_buffer('scales', torch.zeros((outfeatures, 1)))
         self.register_buffer('bias', torch.zeros(outfeatures))
         self.register_buffer(
-            'qweight', torch.zeros((infeatures // 32 * 3, outfeatures), dtype=torch.int)
+            'qweight', torch.zeros((infeatures // 32 * nbits, outfeatures), dtype=torch.int)
         )
+        self.nbits = nbits
         self.faster = faster
 
     def pack(self, linear, scales, zeros):
@@ -156,27 +157,41 @@ class Quant3Linear(nn.Module):
         intweight = intweight.t().contiguous()
         intweight = intweight.numpy().astype(np.uint32)
         qweight = np.zeros(
-            (intweight.shape[0] // 32 * 3, intweight.shape[1]), dtype=np.uint32
+            (intweight.shape[0] // 32 * self.nbits, intweight.shape[1]), dtype=np.uint32
         )
         i = 0
         row = 0
         while row < qweight.shape[0]:
+            for j in range(i, i + 32 // self.nbits):
+                qweight[row] |= intweight[j] << (self.nbits * (j - i))
+            i += 32 // self.nbits
+
+            if self.nbits == 3:
+                qweight[row] |= intweight[i] << 30
+                row += 1
+                qweight[row] |= (intweight[i] >> 2) & 1
+                i += 1
+                offset = 1
+            else:
+                row += 1
+                offset = 0
+            
             for j in range(i, i + 10):
-                qweight[row] |= intweight[j] << (3 * (j - i))
-            i += 10
-            qweight[row] |= intweight[i] << 30
-            row += 1
-            qweight[row] |= (intweight[i] >> 2) & 1
-            i += 1
+                qweight[row] |= intweight[j] << (self.nbits * (j - i) + offset)
+            i += 32 // self.nbits
+
+            if self.nbits == 3:
+                qweight[row] |= intweight[i] << 31
+                row += 1
+                qweight[row] |= (intweight[i] >> 1) & 0x3
+                i += 1
+                offset = 2
+            else:
+                row += 1
+                offset = 0
+            
             for j in range(i, i + 10):
-                qweight[row] |= intweight[j] << (3 * (j - i) + 1)
-            i += 10
-            qweight[row] |= intweight[i] << 31
-            row += 1
-            qweight[row] |= (intweight[i] >> 1) & 0x3
-            i += 1
-            for j in range(i, i + 10):
-                qweight[row] |= intweight[j] << (3 * (j - i) + 2)
+                qweight[row] |= intweight[j] << (self.nbits * (j - i) + offset)
             i += 10
             row += 1
 
