@@ -331,20 +331,24 @@ def benchmark(model, input_ids, check=False):
         else:
             torch.cuda.synchronize()
     with torch.no_grad():
-        attention_mask = torch.ones((1, input_ids.numel()), device=DEV)
+        generate_length = input_ids.numel() // args.batchsize
+        attention_mask = torch.ones((args.batchsize, generate_length), device=DEV)
         times = []
-        for i in range(input_ids.numel()):
+        for i in range(generate_length):
             tick = time.time()
             out = model(
-                input_ids[:, i].reshape((1,-1)),
+                input_ids[:, i].reshape((args.batchsize,-1)),
                 past_key_values=cache['past'],
-                attention_mask=attention_mask[:, :(i + 1)].reshape((1, -1))
+                attention_mask=attention_mask[:, :(i + 1)].reshape((args.batchsize, -1))
             )
             sync()
             times.append(time.time() - tick)
             print(i, times[-1])
-            if check and i != input_ids.numel() - 1:
-                tot += loss(out.logits[0].to(DEV), input_ids[:, (i + 1)].to(DEV)).float()
+            if check and i != generate_length - 1:
+                t = 0.
+                for b in range(args.batchsize):
+                    t += loss(out.logits[b].to(DEV), input_ids[b:b+1, (i + 1)].to(DEV)).float()
+                tot += (t / args.batchsize)
             cache['past'] = list(out.past_key_values)
             del out
         sync()
@@ -413,6 +417,10 @@ if __name__ == '__main__':
         help='Number of tokens to use for benchmarking.'
     )
     parser.add_argument(
+        '--batchsize', type=int, default=1,
+        help='Number of tokens to use for benchmarking.'
+    )
+    parser.add_argument(
         '--check', action='store_true',
         help='Whether to compute perplexity during benchmarking for verification.'
     )
@@ -457,20 +465,10 @@ if __name__ == '__main__':
         else:
             model = model.to(DEV)
         if args.benchmark:
-            input_ids = next(iter(dataloader))[0][:, :args.benchmark]
+            input_ids = torch.tile(next(iter(dataloader))[0], (args.batchsize, 1))[:, :args.benchmark]
             benchmark(model, input_ids, check=args.check)
     if args.load:
         exit()
-
-    datasets = ['wikitext2', 'ptb', 'c4'] 
-    if args.new_eval:
-      datasets = ['wikitext2', 'ptb-new', 'c4-new']
-    for dataset in datasets: 
-        dataloader, testloader = get_loaders(
-            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        print(dataset)
-        opt_eval(model, testloader, DEV)
 
     if args.save:
         opt_pack3(model, quantizers)

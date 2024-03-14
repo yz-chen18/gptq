@@ -184,20 +184,20 @@ class Quant3Linear(nn.Module):
         self.qweight = torch.from_numpy(qweight) 
 
     def forward(self, x):
-        if x.shape[-1] == x.numel():
-            outshape = list(x.shape)
-            y = self.bias.clone()
-            outshape[-1] = self.bias.numel()
-            dtype = x.dtype
-            if self.faster:
-                x = x.half()
-                quant_cuda.vecquant3matmul_faster(x, self.qweight, y, self.scales, self.zeros)
-            else:
-                x = x.float()
-                quant_cuda.vecquant3matmul(x, self.qweight, y, self.scales, self.zeros)
-            y = y.to(dtype)
-            return y.reshape(outshape)
-        raise ValueError('Only supports a single token currently.')
+        outshape = list(x.shape)
+        batchsize = x.shape[0]
+        y = torch.tile(self.bias, (batchsize, 1))
+
+        outshape[-1] = self.bias.numel()
+        dtype = x.dtype
+        if self.faster:
+            x = x.half()
+            quant_cuda.vecquant3matmul_faster(x, self.qweight, y, self.scales, self.zeros)
+        else:
+            x = x.float()
+            quant_cuda.vecquant3matmul(x, self.qweight, y, self.scales, self.zeros)
+        y = y.to(dtype)
+        return y.reshape(outshape)
 
 def make_quant3(module, names, name='', faster=False):
     if isinstance(module, Quant3Linear):
