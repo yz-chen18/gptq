@@ -83,14 +83,26 @@ void vecquant3matmul_faster_cuda(
   );
   dim3 threads(BLOCKWIDTH);
 
-  BatchVecQuant3MatMulKernelFaster<<<blocks, threads>>>(
-    (half2*) vec.data_ptr(),
-    mat.data_ptr<int>(),
-    mul.data_ptr<float>(),
-    scales.data_ptr<float>(),
-    zeros.data_ptr<float>(),
-    height, width, batchsize
-  );
+  if (batchsize == 1) {
+    VecQuant3MatMulKernelFaster<<<blocks, threads>>>(
+      (half2*) vec.data_ptr(),
+      mat.data_ptr<int>(),
+      mul.data_ptr<float>(),
+      scales.data_ptr<float>(),
+      zeros.data_ptr<float>(),
+      height, width
+    );
+  } else {
+    BatchVecQuant3MatMulKernelFaster<<<blocks, threads>>>(
+      (half2*) vec.data_ptr(),
+      mat.data_ptr<int>(),
+      mul.data_ptr<float>(),
+      scales.data_ptr<float>(),
+      zeros.data_ptr<float>(),
+      height, width, batchsize
+    );
+  }
+  
 }
 
 __device__ inline unsigned int as_unsigned(int i) {
