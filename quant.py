@@ -134,7 +134,7 @@ except:
     print('CUDA extension not installed.')
 
 # Assumes layer is perfectly divisible into 1024 * 1024 blocks
-class Quant3Linear(nn.Module): 
+class Quant8Linear(nn.Module): 
 
     def __init__(self, infeatures, outfeatures, faster=False):
         super().__init__()
@@ -142,7 +142,7 @@ class Quant3Linear(nn.Module):
         self.register_buffer('scales', torch.zeros((outfeatures, 1)))
         self.register_buffer('bias', torch.zeros(outfeatures))
         self.register_buffer(
-            'qweight', torch.zeros((infeatures // 32 * 3, outfeatures), dtype=torch.int)
+            'qweight', torch.zeros((infeatures // 32 * 8, outfeatures), dtype=torch.int)
         )
         self.faster = faster
 
@@ -156,28 +156,14 @@ class Quant3Linear(nn.Module):
         intweight = intweight.t().contiguous()
         intweight = intweight.numpy().astype(np.uint32)
         qweight = np.zeros(
-            (intweight.shape[0] // 32 * 3, intweight.shape[1]), dtype=np.uint32
+            (intweight.shape[0] // 32 * 8, intweight.shape[1]), dtype=np.uint32
         )
         i = 0
         row = 0
         while row < qweight.shape[0]:
-            for j in range(i, i + 10):
-                qweight[row] |= intweight[j] << (3 * (j - i))
-            i += 10
-            qweight[row] |= intweight[i] << 30
-            row += 1
-            qweight[row] |= (intweight[i] >> 2) & 1
-            i += 1
-            for j in range(i, i + 10):
-                qweight[row] |= intweight[j] << (3 * (j - i) + 1)
-            i += 10
-            qweight[row] |= intweight[i] << 31
-            row += 1
-            qweight[row] |= (intweight[i] >> 1) & 0x3
-            i += 1
-            for j in range(i, i + 10):
-                qweight[row] |= intweight[j] << (3 * (j - i) + 2)
-            i += 10
+            for j in range(i, i + 4):
+                qweight[row] |= intweight[j] << (8 * (j - i))
+            i += 4
             row += 1
 
         qweight = qweight.astype(np.int32)
@@ -192,22 +178,22 @@ class Quant3Linear(nn.Module):
         dtype = x.dtype
         if self.faster:
             x = x.half()
-            quant_cuda.vecquant3matmul_faster(x, self.qweight, y, self.scales, self.zeros)
+            quant_cuda.vecquant8matmul_faster(x, self.qweight, y, self.scales, self.zeros)
         else:
             x = x.float()
-            quant_cuda.vecquant3matmul(x, self.qweight, y, self.scales, self.zeros)
+            quant_cuda.vecquant8matmul(x, self.qweight, y, self.scales, self.zeros)
         y = y.to(dtype)
         return y.reshape(outshape)
 
-def make_quant3(module, names, name='', faster=False):
-    if isinstance(module, Quant3Linear):
+def make_quant8(module, names, name='', faster=False):
+    if isinstance(module, Quant8Linear):
         return
     for attr in dir(module):
         tmp = getattr(module, attr)
         name1 = name + '.' + attr if name != '' else attr
         if name1 in names:
             setattr(
-                module, attr, Quant3Linear(tmp.in_features, tmp.out_features, faster=faster)
+                module, attr, Quant8Linear(tmp.in_features, tmp.out_features, faster=faster)
             )
     for name1, child in module.named_children():
-        make_quant3(child, names, name + '.' + name1 if name != '' else name1, faster=faster)
+        make_quant8(child, names, name + '.' + name1 if name != '' else name1, faster=faster)
