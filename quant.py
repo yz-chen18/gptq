@@ -133,6 +133,17 @@ try:
 except:
     print('CUDA extension not installed.')
 
+@torch.no_grad()
+def quantize_per_tensor_absmax(t):
+    scale = t.abs().max() / 127
+    if not t.is_cuda:
+        # half rounding is not supported on CPU
+        t = t.float()
+    # use inplace operation to save memory
+    t.div_(scale).round_()
+    t_q = t.to(torch.int8)
+    return t_q, scale
+
 # Assumes layer is perfectly divisible into 1024 * 1024 blocks
 class Quant8Linear(nn.Module): 
 
@@ -172,16 +183,17 @@ class Quant8Linear(nn.Module):
     def forward(self, x):
         outshape = list(x.shape)
         batchsize = x.shape[0]
-        y = torch.tile(self.bias, (batchsize, 1))
+        y = torch.tile(self.bias.int(), (batchsize, 1))
 
         outshape[-1] = self.bias.numel()
         dtype = x.dtype
         if self.faster:
-            x = x.half()
+            x, scale = quantize_per_tensor_absmax(x)
             quant_cuda.vecquant8matmul_faster(x, self.qweight, y, self.scales, self.zeros)
         else:
             x = x.float()
             quant_cuda.vecquant8matmul(x, self.qweight, y, self.scales, self.zeros)
+        y = y * scale
         y = y.to(dtype)
         return y.reshape(outshape)
 

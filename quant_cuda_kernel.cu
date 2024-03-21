@@ -16,21 +16,17 @@ __global__ void VecQuant8MatMulKernel(
 );
 
 __global__ void VecQuant8MatMulKernelFaster(
-    const  half2* __restrict__ vec,
+    const  char2* __restrict__ vec,
     const    int* __restrict__ mat,
-           float* __restrict__ mul,
-    const  float* __restrict__ scales,
-    const  float* __restrict__ zeros,
+           int* __restrict__ mul,
     int height,
     int width
 );
 
 __global__ void BatchVecQuant8MatMulKernelFaster(
-    const  half2* __restrict__ vec,
+    const  char2* __restrict__ vec,
     const    int* __restrict__ mat,
-           float* __restrict__ mul,
-    const  float* __restrict__ scales,
-    const  float* __restrict__ zeros,
+           int* __restrict__ mul,
     int height,
     int width,
     int batchsize
@@ -85,20 +81,16 @@ void vecquant8matmul_faster_cuda(
 
   if (batchsize == 1) {
     VecQuant8MatMulKernelFaster<<<blocks, threads>>>(
-      (half2*) vec.data_ptr(),
+      (char2*) vec.data_ptr(),
       mat.data_ptr<int>(),
-      mul.data_ptr<float>(),
-      scales.data_ptr<float>(),
-      zeros.data_ptr<float>(),
+      mul.data_ptr<int>(),
       height, width
     );
   } else {
     BatchVecQuant8MatMulKernelFaster<<<blocks, threads>>>(
-      (half2*) vec.data_ptr(),
+      (char2*) vec.data_ptr(),
       mat.data_ptr<int>(),
-      mul.data_ptr<float>(),
-      scales.data_ptr<float>(),
-      zeros.data_ptr<float>(),
+      mul.data_ptr<int>(),
       height, width, batchsize
     );
   }
@@ -189,11 +181,9 @@ __global__ void VecQuant8MatMulKernel(
 }
 
 __global__ void VecQuant8MatMulKernelFaster(
-    const  half2* __restrict__ vec,
+    const  char2* __restrict__ vec,
     const    int* __restrict__ mat,
-           float* __restrict__ mul,
-    const  float* __restrict__ scales,
-    const  float* __restrict__ zeros,
+           int* __restrict__ mul,
     int height,
     int width
 ) {
@@ -202,18 +192,14 @@ __global__ void VecQuant8MatMulKernelFaster(
   int row = BLOCKHEIGHT * blockIdx.x;
   int col = BLOCKWIDTH * blockIdx.y + threadIdx.x;
 
-  __shared__ half2 blockvec[blockwidth2];
+  __shared__ char2 blockvec[blockwidth2];
   if (threadIdx.x < blockwidth2)
     blockvec[threadIdx.x] = vec[(row / BLOCKHEIGHT) * blockwidth2 + threadIdx.x];
-
-  half2 scale = __float2half2_rn(scales[col]);
-  half2 zero = __float2half2_rn(-zeros[col]);
   
   int i = width * row + col;
   int k = 0;
 
-  float res = 0;
-  half2 res2;
+  int res = 0;
 
   __syncthreads();
 
@@ -221,24 +207,21 @@ __global__ void VecQuant8MatMulKernelFaster(
 
   while (k < blockwidth2) {
     tmp = as_unsigned(mat[i]);
-    res2 = {};
-    res2 = __hfma2(__hfma2({__int2half_rn((tmp >> 0) & 0xff), __int2half_rn((tmp >> 8) & 0xff)}, scale, zero), blockvec[k + 0], res2);
-    res2 = __hfma2(__hfma2({__int2half_rn((tmp >> 16) & 0xff), __int2half_rn((tmp >> 24) & 0xff)}, scale, zero), blockvec[k + 1], res2);
+    res += ((tmp >> 0) & 0xff) * blockvec[k + 0].x;
+    res += ((tmp >> 8) & 0xff) * blockvec[k + 0].y;
+    res += ((tmp >> 16) & 0xff) * blockvec[k + 1].x;
+    res += ((tmp >> 24) & 0xff) * blockvec[k + 1].y;
     i += width;
     k += 2;
-
-    res += __half2float(res2.x) + __half2float(res2.y);
   }
 
   atomicAdd(&mul[col], res);
 }
 
 __global__ void BatchVecQuant8MatMulKernelFaster(
-    const  half2* __restrict__ vec,
+    const  char2* __restrict__ vec,
     const    int* __restrict__ mat,
-           float* __restrict__ mul,
-    const  float* __restrict__ scales,
-    const  float* __restrict__ zeros,
+           int* __restrict__ mul,
     int height,
     int width,
     int batchsize
@@ -248,10 +231,7 @@ __global__ void BatchVecQuant8MatMulKernelFaster(
   int row = BLOCKHEIGHT * blockIdx.x;
   int col = BLOCKWIDTH * blockIdx.y + threadIdx.x;
 
-  __shared__ half2 blockvec[blockwidth2];
-
-  half2 scale = __float2half2_rn(scales[col]);
-  half2 zero = __float2half2_rn(-zeros[col]);
+  __shared__ char2 blockvec[blockwidth2];
 
   for (int b = 0; b < batchsize; b++) {
     if (threadIdx.x < blockwidth2)
@@ -259,8 +239,7 @@ __global__ void BatchVecQuant8MatMulKernelFaster(
     int i = width * row + col;
     int k = 0;
 
-    float res = 0;
-    half2 res2;
+    int res = 0;
 
     __syncthreads();
 
@@ -268,13 +247,12 @@ __global__ void BatchVecQuant8MatMulKernelFaster(
 
     while (k < blockwidth2) {
       tmp = as_unsigned(mat[i]);
-      res2 = {};
-      res2 = __hfma2(__hfma2({__int2half_rn((tmp >> 0) & 0xff), __int2half_rn((tmp >> 8) & 0xff)}, scale, zero), blockvec[k + 0], res2);
-      res2 = __hfma2(__hfma2({__int2half_rn((tmp >> 16) & 0xff), __int2half_rn((tmp >> 24) & 0xff)}, scale, zero), blockvec[k + 1], res2);
+      res += ((tmp >> 0) & 0xff) * blockvec[k + 0].x;
+      res += ((tmp >> 8) & 0xff) * blockvec[k + 0].y;
+      res += ((tmp >> 16) & 0xff) * blockvec[k + 1].x;
+      res += ((tmp >> 24) & 0xff) * blockvec[k + 1].y;
       i += width;
       k += 2;
-
-      res += __half2float(res2.x) + __half2float(res2.y);
     }
 
     atomicAdd(&mul[col + b * width], res);
