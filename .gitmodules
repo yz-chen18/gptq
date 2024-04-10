@@ -1,0 +1,3 @@
+[submodule "3rdparty/cutlass-extension"]
+	path = 3rdparty/cutlass-extension
+	url = git@github.com:yz-chen18/cutlass-extension.git
