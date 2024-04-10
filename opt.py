@@ -228,11 +228,11 @@ def opt_eval(model, testenc, dev):
     model.config.use_cache = use_cache
 
 # TODO: perform packing on GPU
-def opt_pack3(model, quantizers):
+def opt_pack4(model, quantizers):
     layers = find_layers(model)
     layers = {n: layers[n] for n in quantizers}
-    make_quant3(model, quantizers, faster=args.faster_kernel)
-    qlayers = find_layers(model, [Quant3Linear])
+    make_quant4(model, quantizers, faster=args.faster_kernel)
+    qlayers = find_layers(model, [Quant4Linear])
     print('Packing ...')
     for name in qlayers:
         print(name)
@@ -241,7 +241,7 @@ def opt_pack3(model, quantizers):
     print('Done.')
     return model
 
-def load_quant3(model, checkpoint):
+def load_quant4(model, checkpoint):
     from transformers import OPTConfig, OPTForCausalLM 
     config = OPTConfig.from_pretrained(model)
     def noop(*args, **kwargs):
@@ -260,7 +260,7 @@ def load_quant3(model, checkpoint):
     for name in ['model.decoder.project_out', 'model.decoder.project_in', 'lm_head']:
         if name in layers:
             del layers[name]
-    make_quant3(model, layers, faster=args.faster_kernel)
+    make_quant4(model, layers, faster=args.faster_kernel)
 
     print('Loading model ...')
     model.load_state_dict(torch.load(checkpoint))
@@ -444,7 +444,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.load:
-        model = load_quant3(args.model, args.load)
+        model = load_quant4(args.model, args.load)
     else:
         model = get_opt(args.model)
         model.eval()
@@ -471,5 +471,5 @@ if __name__ == '__main__':
         exit()
 
     if args.save:
-        opt_pack3(model, quantizers)
+        opt_pack4(model, quantizers)
         torch.save(model.state_dict(), args.save) 
