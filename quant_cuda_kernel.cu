@@ -4,6 +4,30 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
+#include "src/fastertransformer/kernels/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "src/fastertransformer/utils/activation_types.h"
+
+#include "cutlass/gemm/device/gemm_universal_base.h"
+#include "cutlass/gemm/kernel/default_gemm.h"
+
+using T_A = half;
+using T_B = cutlass::uint4b_t;
+using T_C = T_A;
+
+using namespace fastertransformer;
+
+void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_biases, int m, int n, int k) {
+    auto* runner = new CutlassFpAIntBGemmRunner<T_A, T_B>();
+
+    char* workspace_ptr;
+    size_t workspace_bytes = runner->getWorkspaceSize(m, n, k);
+    cudaMalloc((char**) &workspace_ptr, workspace_bytes);
+
+    runner->gemm_bias_act(d_A, d_B, d_scales, d_biases, d_C, m, n, k, ActivationType::Identity, workspace_ptr, workspace_bytes, 0);
+
+    delete runner;
+}
+
 template <typename scalar_t>
 __global__ void VecQuant4MatMulKernel(
     const  scalar_t* __restrict__ vec,
@@ -77,31 +101,11 @@ void vecquant4matmul_faster_cuda(
   int height = mat.size(0);
   int width = mat.size(1);
 
-  dim3 blocks(
-    (height + BLOCKHEIGHT - 1) / BLOCKHEIGHT,
-    (width + BLOCKWIDTH - 1) / BLOCKWIDTH
-  );
-  dim3 threads(BLOCKWIDTH);
+  int m = batchsize;
+  int k = vec.size(vec.dim() - 1);
+  int n = width;
 
-  if (batchsize == 1) {
-    VecQuant4MatMulKernelFaster<<<blocks, threads>>>(
-      (half2*) vec.data_ptr(),
-      mat.data_ptr<int>(),
-      mul.data_ptr<float>(),
-      scales.data_ptr<float>(),
-      zeros.data_ptr<float>(),
-      height, width
-    );
-  } else {
-    BatchVecQuant4MatMulKernelFaster<<<blocks, threads>>>(
-      (half2*) vec.data_ptr(),
-      mat.data_ptr<int>(),
-      mul.data_ptr<float>(),
-      scales.data_ptr<float>(),
-      zeros.data_ptr<float>(),
-      height, width, batchsize
-    );
-  }
+  run((half*) vec.data_ptr(), mat.data_ptr<cutlass::uint4b_t>(), mul.data_ptr<half>(), scales.data_ptr<half>(), mul.data_ptr<half>(), m, k, n);
   
 }
 
