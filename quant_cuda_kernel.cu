@@ -25,6 +25,10 @@ void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_biases, int m, int 
 
     runner->gemm_bias_act(d_A, d_B, d_scales, d_biases, d_C, m, n, k, ActivationType::Identity, workspace_ptr, workspace_bytes, 0);
 
+    cudaDeviceSynchronize();
+
+    cudaFree(workspace_ptr);
+
     delete runner;
 }
 
@@ -102,10 +106,11 @@ void vecquant4matmul_faster_cuda(
   int width = mat.size(1);
 
   int m = batchsize;
-  int k = vec.size(vec.dim() - 1);
+  int k = height * 8;
   int n = width;
 
-  run((half*) vec.data_ptr(), mat.data_ptr<cutlass::uint4b_t>(), mul.data_ptr<half>(), scales.data_ptr<half>(), mul.data_ptr<half>(), m, k, n);
+  run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), 
+    (half*) mul.data_ptr(), m, k, n);
   
 }
 
