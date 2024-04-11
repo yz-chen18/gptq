@@ -110,7 +110,7 @@ void vecquant4matmul_faster_cuda(
   int n = width;
 
   run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), 
-    (half*) mul.data_ptr(), m, k, n);
+    (half*) mul.data_ptr(), m, n, k);
   
 }
 

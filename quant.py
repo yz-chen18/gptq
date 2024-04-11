@@ -181,7 +181,7 @@ class Quant4Linear(nn.Module):
             y = y.half()
             self.scales = self.scales.half()
             self.zeros = self.zeros.half()
-            quant_cuda.vecquant4matmul_faster(x, self.qweight, y, self.scales.half(), self.zeros.half())
+            quant_cuda.vecquant4matmul_faster(x, self.qweight, y, self.scales, self.zeros)
         else:
             x = x.float()
             quant_cuda.vecquant4matmul(x, self.qweight, y, self.scales, self.zeros)
