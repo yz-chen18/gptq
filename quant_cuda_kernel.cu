@@ -16,14 +16,14 @@ using T_C = T_A;
 
 using namespace fastertransformer;
 
-void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_biases, int m, int n, int k) {
+void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_zeros, T_C* d_biases, int m, int n, int k) {
     auto* runner = new CutlassFpAIntBGemmRunner<T_A, T_B>();
 
     char* workspace_ptr;
     size_t workspace_bytes = runner->getWorkspaceSize(m, n, k);
     cudaMalloc((char**) &workspace_ptr, workspace_bytes);
 
-    runner->gemm_bias_act(d_A, d_B, d_scales, d_biases, d_C, m, n, k, ActivationType::Identity, workspace_ptr, workspace_bytes, 0);
+    runner->gemm_bias_act(d_A, d_B, d_scales, d_zeros, d_biases, d_C, m, n, k, ActivationType::Identity, workspace_ptr, workspace_bytes, 0);
 
     cudaDeviceSynchronize();
 
@@ -109,7 +109,7 @@ void vecquant4matmul_faster_cuda(
   int k = height * 8;
   int n = width;
 
-  run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), 
+  run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), (half*) zeros.data_ptr(),
     (half*) mul.data_ptr(), m, n, k);
   
 }
