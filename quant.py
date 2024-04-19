@@ -2,6 +2,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+try:
+    import quant_cuda
+except:
+    print('CUDA extension not installed.')
+
 
 def quantize(x, scale, zero, maxq):
     if maxq < 0:
@@ -127,12 +132,6 @@ class Quantizer(nn.Module):
     def ready(self):
         return torch.all(self.scale != 0)
 
-
-try:
-    import quant_cuda
-except:
-    print('CUDA extension not installed.')
-
 # Assumes layer is perfectly divisible into 1024 * 1024 blocks
 class Quant4Linear(nn.Module): 
 
@@ -167,7 +166,7 @@ class Quant4Linear(nn.Module):
             row += 1
 
         qweight = qweight.astype(np.int32)
-        self.qweight = torch.from_numpy(qweight) 
+        quant_cuda.preprocess_weights_for_mixed_gemm(self.qweight, torch.from_numpy(qweight), 4)
 
     def forward(self, x):
         outshape = list(x.shape)

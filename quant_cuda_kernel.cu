@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
+#include "src/fastertransformer/kernels/cutlass_kernels/cutlass_preprocessors.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "src/fastertransformer/utils/activation_types.h"
 
@@ -14,16 +15,14 @@ using T_A = half;
 using T_B = cutlass::uint4b_t;
 using T_C = T_A;
 
-using namespace fastertransformer;
-
-void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_zeros, T_C* d_biases, int m, int n, int k) {
-    auto* runner = new CutlassFpAIntBGemmRunner<T_A, T_B>();
+void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_zeros, int m, int n, int k) {
+    auto* runner = new fastertransformer::CutlassFpAIntBGemmRunner<T_A, T_B>();
 
     char* workspace_ptr;
     size_t workspace_bytes = runner->getWorkspaceSize(m, n, k);
     cudaMalloc((char**) &workspace_ptr, workspace_bytes);
 
-    runner->gemm_bias_act(d_A, d_B, d_scales, d_zeros, d_biases, d_C, m, n, k, ActivationType::Identity, workspace_ptr, workspace_bytes, 0);
+    runner->gemm_bias_act(d_A, d_B, d_scales, d_zeros, nullptr, d_C, m, n, k, fastertransformer::ActivationType::Identity, workspace_ptr, workspace_bytes, 0);
 
     cudaDeviceSynchronize();
 
@@ -109,9 +108,21 @@ void vecquant4matmul_faster_cuda(
   int k = height * 8;
   int n = width;
 
-  run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), (half*) zeros.data_ptr(),
-    (half*) mul.data_ptr(), m, n, k);
+  run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), (half*) zeros.data_ptr(), 
+    m, n, k);
   
+}
+
+void preprocess_weights_for_mixed_gemm(
+  torch::Tensor preprocessed_quantized_weight, torch::Tensor row_major_quantized_weight, size_t nbits
+) {
+  assert(row_major_quantized_weight.dim() == 2);
+  assert((nbits == 4) || (nbits == 8));
+  size_t num_rows = (nbits == 4) ? (8 * row_major_quantized_weight.size(0)) : (4 * row_major_quantized_weight.size(0));
+  size_t num_cols = row_major_quantized_weight.size(1);
+  fastertransformer::preprocess_weights_for_mixed_gemm(reinterpret_cast<int8_t*>(preprocessed_quantized_weight.data_ptr()), 
+    reinterpret_cast<const int8_t*>(row_major_quantized_weight.data_ptr()), {num_rows, num_cols},
+    (nbits == 4) ? fastertransformer::QuantType::PACKED_INT4_WEIGHT_ONLY : fastertransformer::QuantType::INT8_WEIGHT_ONLY);
 }
 
 __device__ inline unsigned int as_unsigned(int i) {

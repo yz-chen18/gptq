@@ -28,7 +28,12 @@ void vecquant4matmul_faster(
   vecquant4matmul_faster_cuda(vec, mat, mul, scales, zeros);
 }
 
+void preprocess_weights_for_mixed_gemm(
+  torch::Tensor preprocessed_quantized_weight, torch::Tensor row_major_quantized_weight, size_t nbits
+);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("vecquant4matmul", &vecquant4matmul, "Vector 4-bit Quantized Matrix Multiplication (CUDA)");
   m.def("vecquant4matmul_faster", &vecquant4matmul_faster, "Vector 4-bit Quantized Matrix Multiplication (CUDA), faster version");
+  m.def("preprocess_weights_for_mixed_gemm", &preprocess_weights_for_mixed_gemm, "Transformation from a row major weight matrix to the required layout of mixed type GEMM");
 }
