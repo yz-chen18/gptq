@@ -133,7 +133,7 @@ class Quantizer(nn.Module):
         return torch.all(self.scale != 0)
 
 # Assumes layer is perfectly divisible into 1024 * 1024 blocks
-class Quant4Linear(nn.Module): 
+class Quant8Linear(nn.Module): 
 
     def __init__(self, infeatures, outfeatures, faster=False):
         super().__init__()
@@ -141,7 +141,7 @@ class Quant4Linear(nn.Module):
         self.register_buffer('scales', torch.zeros((outfeatures, 1)))
         self.register_buffer('bias', torch.zeros(outfeatures))
         self.register_buffer(
-            'qweight', torch.zeros((infeatures // 32 * 4, outfeatures), dtype=torch.int)
+            'qweight', torch.zeros((infeatures // 32 * 8, outfeatures), dtype=torch.int)
         )
         self.faster = faster
 
@@ -155,18 +155,20 @@ class Quant4Linear(nn.Module):
         intweight = intweight.t().contiguous()
         intweight = intweight.numpy().astype(np.uint32)
         qweight = np.zeros(
-            (intweight.shape[0] // 32 * 4, intweight.shape[1]), dtype=np.uint32
+            (intweight.shape[0] // 32 * 8, intweight.shape[1]), dtype=np.uint32
         )
         i = 0
         row = 0
         while row < qweight.shape[0]:
-            for j in range(i, i + 8):
-                qweight[row] |= intweight[j] << (4 * (j - i))
-            i += 8
+            for j in range(i, i + 4):
+                qweight[row] |= 0 << (8 * (j - i))
+            i += 4
             row += 1
 
         qweight = qweight.astype(np.int32)
-        quant_cuda.preprocess_weights_for_mixed_gemm(self.qweight, torch.from_numpy(qweight), 4)
+        quant_cuda.preprocess_weights_for_mixed_gemm(self.qweight, torch.from_numpy(qweight), 8)
+
+        print(self.qweight)
 
     def forward(self, x):
         outshape = list(x.shape)
@@ -180,22 +182,26 @@ class Quant4Linear(nn.Module):
             y = y.half()
             self.scales = self.scales.half()
             self.zeros = self.zeros.half()
-            quant_cuda.vecquant4matmul_faster(x, self.qweight, y, self.scales, self.zeros)
+
+            print("x", x)
+            quant_cuda.vecquant8matmul_faster(x, self.qweight, y, self.scales, self.zeros)
+            print("y", y)
         else:
             x = x.float()
-            quant_cuda.vecquant4matmul(x, self.qweight, y, self.scales, self.zeros)
+            quant_cuda.vecquant8matmul(x, self.qweight, y, self.scales, self.zeros)
+        
         y = y.to(dtype)
         return y.reshape(outshape)
 
-def make_quant4(module, names, name='', faster=False):
-    if isinstance(module, Quant4Linear):
+def make_quant8(module, names, name='', faster=False):
+    if isinstance(module, Quant8Linear):
         return
     for attr in dir(module):
         tmp = getattr(module, attr)
         name1 = name + '.' + attr if name != '' else attr
         if name1 in names:
             setattr(
-                module, attr, Quant4Linear(tmp.in_features, tmp.out_features, faster=faster)
+                module, attr, Quant8Linear(tmp.in_features, tmp.out_features, faster=faster)
             )
     for name1, child in module.named_children():
-        make_quant4(child, names, name + '.' + name1 if name != '' else name1, faster=faster)
+        make_quant8(child, names, name + '.' + name1 if name != '' else name1, faster=faster)

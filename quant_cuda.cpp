@@ -2,30 +2,30 @@
 #include <torch/python.h>
 #include <c10/cuda/CUDAGuard.h>
 
-void vecquant4matmul_cuda(
+void vecquant8matmul_cuda(
   torch::Tensor vec, torch::Tensor mat, torch::Tensor mul,
   torch::Tensor scales, torch::Tensor zeros
 );
 
-void vecquant4matmul_faster_cuda(
+void vecquant8matmul_faster_cuda(
   torch::Tensor vec, torch::Tensor mat, torch::Tensor mul,
   torch::Tensor scales, torch::Tensor zeros
 ); 
 
-void vecquant4matmul(
+void vecquant8matmul(
   torch::Tensor vec, torch::Tensor mat, torch::Tensor mul,
   torch::Tensor scales, torch::Tensor zeros
 ) {
   const at::cuda::OptionalCUDAGuard device_guard(device_of(vec));
-  vecquant4matmul_cuda(vec, mat, mul, scales, zeros);
+  vecquant8matmul_cuda(vec, mat, mul, scales, zeros);
 }
 
-void vecquant4matmul_faster(
+void vecquant8matmul_faster(
   torch::Tensor vec, torch::Tensor mat, torch::Tensor mul,
   torch::Tensor scales, torch::Tensor zeros
 ) {
   const at::cuda::OptionalCUDAGuard device_guard(device_of(vec));
-  vecquant4matmul_faster_cuda(vec, mat, mul, scales, zeros);
+  vecquant8matmul_faster_cuda(vec, mat, mul, scales, zeros);
 }
 
 void preprocess_weights_for_mixed_gemm(
@@ -33,7 +33,7 @@ void preprocess_weights_for_mixed_gemm(
 );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("vecquant4matmul", &vecquant4matmul, "Vector 4-bit Quantized Matrix Multiplication (CUDA)");
-  m.def("vecquant4matmul_faster", &vecquant4matmul_faster, "Vector 4-bit Quantized Matrix Multiplication (CUDA), faster version");
+  m.def("vecquant8matmul", &vecquant8matmul, "Vector 8-bit Quantized Matrix Multiplication (CUDA)");
+  m.def("vecquant8matmul_faster", &vecquant8matmul_faster, "Vector 8-bit Quantized Matrix Multiplication (CUDA), faster version");
   m.def("preprocess_weights_for_mixed_gemm", &preprocess_weights_for_mixed_gemm, "Transformation from a row major weight matrix to the required layout of mixed type GEMM");
 }

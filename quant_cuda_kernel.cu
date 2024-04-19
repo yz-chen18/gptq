@@ -12,7 +12,7 @@
 #include "cutlass/gemm/kernel/default_gemm.h"
 
 using T_A = half;
-using T_B = cutlass::uint4b_t;
+using T_B = uint8_t;
 using T_C = T_A;
 
 void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_zeros, int m, int n, int k) {
@@ -32,7 +32,7 @@ void run(T_A* d_A, T_B* d_B, T_C* d_C, T_C* d_scales, T_C* d_zeros, int m, int n
 }
 
 template <typename scalar_t>
-__global__ void VecQuant4MatMulKernel(
+__global__ void VecQuant8MatMulKernel(
     const  scalar_t* __restrict__ vec,
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
@@ -42,7 +42,7 @@ __global__ void VecQuant4MatMulKernel(
     int width
 );
 
-__global__ void VecQuant4MatMulKernelFaster(
+__global__ void VecQuant8MatMulKernelFaster(
     const  half2* __restrict__ vec,
     const    int* __restrict__ mat,
            float* __restrict__ mul,
@@ -52,7 +52,7 @@ __global__ void VecQuant4MatMulKernelFaster(
     int width
 );
 
-__global__ void BatchVecQuant4MatMulKernelFaster(
+__global__ void BatchVecQuant8MatMulKernelFaster(
     const  half2* __restrict__ vec,
     const    int* __restrict__ mat,
            float* __restrict__ mul,
@@ -66,7 +66,7 @@ __global__ void BatchVecQuant4MatMulKernelFaster(
 const int BLOCKWIDTH  = 256;
 const int BLOCKHEIGHT =  32;
 
-void vecquant4matmul_cuda(
+void vecquant8matmul_cuda(
   torch::Tensor vec,
   torch::Tensor mat,
   torch::Tensor mul,
@@ -83,8 +83,8 @@ void vecquant4matmul_cuda(
   dim3 threads(BLOCKWIDTH);
 
   AT_DISPATCH_FLOATING_TYPES(
-    vec.type(), "vecquant4matmul_cuda", ([&] {
-      VecQuant4MatMulKernel<<<blocks, threads>>>(
+    vec.type(), "vecquant8matmul_cuda", ([&] {
+      VecQuant8MatMulKernel<<<blocks, threads>>>(
         vec.data<scalar_t>(), mat.data<int>(), mul.data<scalar_t>(),
         scales.data<scalar_t>(), zeros.data<scalar_t>(),
         height, width
@@ -93,7 +93,7 @@ void vecquant4matmul_cuda(
   );
 }
 
-void vecquant4matmul_faster_cuda(
+void vecquant8matmul_faster_cuda(
   torch::Tensor vec,
   torch::Tensor mat,
   torch::Tensor mul,
@@ -105,10 +105,10 @@ void vecquant4matmul_faster_cuda(
   int width = mat.size(1);
 
   int m = batchsize;
-  int k = height * 8;
+  int k = height * 4;
   int n = width;
 
-  run((half*) vec.data_ptr(), (cutlass::uint4b_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), (half*) zeros.data_ptr(), 
+  run((half*) vec.data_ptr(), (uint8_t*) mat.data_ptr(), (half*) mul.data_ptr(), (half*) scales.data_ptr(), (half*) zeros.data_ptr(), 
     m, n, k);
   
 }
@@ -130,7 +130,7 @@ __device__ inline unsigned int as_unsigned(int i) {
 }
 
 template <typename scalar_t>
-__global__ void VecQuant4MatMulKernel(
+__global__ void VecQuant8MatMulKernel(
     const  scalar_t* __restrict__ vec,
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
@@ -208,7 +208,7 @@ __global__ void VecQuant4MatMulKernel(
   atomicAdd(&mul[col], res);
 }
 
-__global__ void VecQuant4MatMulKernelFaster(
+__global__ void VecQuant8MatMulKernelFaster(
     const  half2* __restrict__ vec,
     const    int* __restrict__ mat,
            float* __restrict__ mul,
@@ -287,7 +287,7 @@ __global__ void VecQuant4MatMulKernelFaster(
   atomicAdd(&mul[col], res);
 }
 
-__global__ void BatchVecQuant4MatMulKernelFaster(
+__global__ void BatchVecQuant8MatMulKernelFaster(
     const  half2* __restrict__ vec,
     const    int* __restrict__ mat,
            float* __restrict__ mul,
