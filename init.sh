@@ -9,8 +9,6 @@ else
 fi
 make -j"$threads"
 
-cd ../../../; python setup_cuda.py install
+cd ../../../; pip3 install -r requirements.txt; python setup_cuda.py install
 
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$(pwd)/3rdparty/cutlass-extension/build/lib"
-
-pip3 install -r requirements.txt
