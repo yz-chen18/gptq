@@ -1,3 +1,23 @@
+# Quick Start for W4A16 Cutlass Extension
+git clone https://github.com/yz-chen18/gptq.git
+
+cd gptq; git checkout W4A16; cd 3rdparty
+
+git submodule update --init --recursive
+
+cd cutlass-extension; mkdir build; cd build; cmake ..; make -j32
+
+export LD_LIBRARY_PATH="$(pwd)/lib:$LD_LIBRARY_PATH"
+
+pip install torch==2.1.0
+pip install transformers==4.21.2
+pip install datasets==1.17.0
+
+cd ../../../; python setup_cuda.py install
+
+CUDA_VISIBLE_DEVICES=0 python opt.py facebook/opt-125m c4 --wbits 4 --save opt125m-4bit.pt
+CUDA_VISIBLE_DEVICES=0 python opt.py facebook/opt-125m c4 --load opt125m-4bit.pt --benchmark 128
+
 # GPTQ
 
 This repository contains the code for the ICLR 2023 paper [GPTQ: Accurate Post-training Compression for Generative Pretrained Transformers](https://arxiv.org/abs/2210.17323). 
