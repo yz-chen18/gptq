@@ -10,7 +10,9 @@ cd cutlass-extension; mkdir build; cd build; cmake ..; make -j32
 export LD_LIBRARY_PATH="$(pwd)/lib:$LD_LIBRARY_PATH"
 
 pip install torch==2.1.0
+
 pip install transformers==4.21.2
+
 pip install datasets==1.17.0
 
 cd ../../../; python setup_cuda.py install
